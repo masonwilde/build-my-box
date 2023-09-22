@@ -5,59 +5,71 @@ TOP_CONF=""
 
 set -eu
 
-prepare_backup() {
+indent() {
+  #"$@" > >(sed 's/^/  /') 2> >(sed 's/^/  /' >&2)
+  local indent=${INDENT:-"    "}
+  # Hacky, but captures stderr without lagging behind stdout.
+  { "$@" 2> >(sed "s/^/$indent/g" >&2); } | sed "s/^/$indent/g"
+  return $?
+}
+
+prepare_backup_file() {
   local file="$1"
-  if [[ "$file" == "undo-${TOP_CONF}.sh" ]]; then
+  if [[ $file =~ undo-${TOP_CONF}[.]sh ]]; then
     return
   fi
   if [[ ! -d $(dirname "${file}") ]]; then
-    prepare_backup_dir $(dirname "${file}")
+    indent prepare_backup_dir $(dirname "${file}")
   fi
   if [[ ! -f "${file}" ]]; then
-    echo "touch ${file}"
+    echo "MAKE NEW FILE: ${file}"
     touch "$file"
-    append_to_file "rm ${file}" "undo-${TOP_CONF}.sh"
+    indent append_to_file "rm ${file}" "$UNDO_FILE"
   else
-    echo "cp ${file} ${file}.${TOP_CONF}.bak"
-    cp "${file}" "${file}.${TOP_CONF}.bak"
-    append_to_file "cp ${file}.${TOP_CONF}.bak ${file}" "undo-${TOP_CONF}.sh"
+    if [[ ! -f "${file}.${TOP_CONF}.bak" ]]; then
+      echo "BACKUP FILE: ${file}"
+      cp "${file}" "${file}.${TOP_CONF}.bak"
+      indent append_if_absent "cp ${file}.${TOP_CONF}.bak ${file}" "$UNDO_FILE"
+    fi
   fi
 }
 
 prepare_backup_dir() {
   local dir="$1"
   if [[ ! -d "${dir}" ]]; then
-    echo "mkdir -p $dir"
+    echo "MAKE NEW DIR: ${dir}"
     mkdir -p "$dir"
-    append_to_file "rm -rf ${dir}" "undo-${TOP_CONF}.sh"
+    indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
   else
-    echo "cp -r ${dir} ${dir}.${TOP_CONF}.bak"
-    cp -r "${dir}" "${dir}.${TOP_CONF}.bak"
-    append_to_file "rm -rf ${dir}" "undo-${TOP_CONF}.sh"
-    append_to_file "cp -r ${dir}.${TOP_CONF}.bak/ ${dir}" "undo-${TOP_CONF}.sh"
+    if [[ ! -f "${dir}.${TOP_CONF}.bak" ]]; then
+      echo "BACKUP DIR: ${dir}"
+      cp -r "${dir}" "${dir}.${TOP_CONF}.bak"
+      indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
+      indent append_to_file "cp -r ${dir}.${TOP_CONF}.bak/ ${dir}" "$UNDO_FILE"
+    fi
   fi
 }
 
 append_if_absent() {
   local line="$1"
   local file="$2"
-  local cmd="grep -q \"^${line}\$\" ${file}"
-  local prev_line="$($cmd)"
-  echo "PREVIOUS_GREP: $cmd"
-  echo "PREVIOUS_FILE: '$file'"
-  echo "PREVIOUS_LINE:$prev_line"
+  # echo "APPEND IF ABSENT: '$line' >> '$file'"
+  local cmd=(-n "^${line}\$" "${file}")
+  local prev_line=$(grep "${cmd[@]}")
   if [[ $prev_line =~ ([0-9]+[:]) ]]; then
     prev_line_num="${BASH_REMATCH[1]}"
-    line="# $line # Previous line: ${prev_line_num}"
+    # line="# $line # Previous line: ${prev_line_num}"
+    # echo "FOUND: $prev_line_num"
+    return
   fi
-  append_to_file "${line}" "${file}"
+  indent append_to_file "${line}" "${file}"
 }
 
 append_to_file() {
   local line="$1"
   local file="$2"
-  prepare_backup "${file}"
-  echo "echo ${line} >> ${file}"
+  echo "APPEND TO FILE: '$line' >> '$file'"
+  indent prepare_backup_file "${file}"
   echo "${line}" >> "${file}"
 }
 
@@ -74,7 +86,8 @@ main() {
     echo "ERROR: Instructions file name must be of the form <top-level-conf>-instructions.sh"
     exit 1
   fi
-  touch "undo-${TOP_CONF}.sh"
+  UNDO_FILE="undo-${TOP_CONF}-$(date +'%Y-%m-%dT%H:%M:%S%z').sh"
+  touch "$UNDO_FILE"
   source $INSTRUCTIONS
 }
 

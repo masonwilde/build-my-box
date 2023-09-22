@@ -263,7 +263,7 @@ handle_bash() {
     dlog "BASH is effected"
     check_required_files "${BASHRC}"
     if [[ -n ${NEW_BASH_PATHS:-} ]]; then
-      append_instructions "append_to_file \"PATHS for ${config_name}\" \"${BASH_PATH_PATH}\""
+      append_instructions "append_to_file \"# PATHS for ${config_name}\" \"${BASH_PATH_PATH}\""
       for path in "${NEW_BASH_PATHS[@]}"; do
         add_bash_path "${path}"
       done
@@ -272,7 +272,7 @@ handle_bash() {
 
     fi
     if [[ -n ${NEW_BASH_ALIASES:-} ]]; then
-      append_instructions "append_to_file \"ALIASES for ${config_name}\" \"${BASH_ALIASES_PATH}\""
+      append_instructions "append_to_file \"# ALIASES for ${config_name}\" \"${BASH_ALIASES_PATH}\""
       for alias in "${NEW_BASH_ALIASES[@]}"; do
         add_bash_alias "${alias}"
       done
@@ -280,7 +280,7 @@ handle_bash() {
       append_instructions "append_if_absent \"source ${BASH_ALIASES_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_FUNCTIONS:-} ]]; then
-      append_instructions "append_to_file \"FUNCTIONS for ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
+      append_instructions "append_to_file \"# FUNCTIONS for ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
       for func in "${NEW_BASH_FUNCTIONS[@]}"; do
         add_bash_function "${func}"
       done
@@ -288,7 +288,7 @@ handle_bash() {
       append_instructions "append_if_absent \"source ${BASH_FUNCTIONS_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_ENV_VARS:-} ]]; then
-      append_instructions "append_to_file \"ENV_VARS for ${config_name}\" \"${BASH_ENV_PATH}\""
+      append_instructions "append_to_file \"# ENV_VARS for ${config_name}\" \"${BASH_ENV_PATH}\""
       for var in "${NEW_BASH_ENV_VARS[@]}"; do
         add_bash_env_var "${var}"
       done
@@ -303,11 +303,12 @@ handle_vim() {
     dlog "VIM is effected"
     check_required_files "${VIMRC}"
     append_instructions "append_to_file \"# From ${config_name}\" \"${VIM_PATH}\""
-    append_instructions "append_to_file \" \"  \"${VIM_PATH}\""
-    append_instructions "append_if_absent \"source ${VIM_PATH}\" \"${VIMRC}\""
     for line in "${NEW_VIM_LINES[@]}"; do
       add_to_vimrc "${line}"
     done
+    append_instructions "append_to_file \" \"  \"${VIM_PATH}\""
+    append_instructions "append_if_absent \"source ${VIM_PATH}\" \"${VIMRC}\""
+    
   fi
 }
 
@@ -315,12 +316,13 @@ handle_tmux() {
   if [[ -n ${NEW_TMUX_LINES:-} ]]; then
     dlog "TMUX is effected"
     check_required_files "${TMUXCONF}"
-    append_instructions "append_to_file \"# From ${config_name}\" \"${TMUX_PATH}\""
-    append_instructions "append_to_file \" \"  \"${TMUX_PATH}\""
-    append_instructions "append_if_absent \"source ${TMUX_PATH}\" \"${TMUXCONF}\""
+    append_instructions "append_to_file\"# From ${config_name}\" \"${TMUX_PATH}\""
     for line in "${NEW_TMUX_LINES[@]}"; do
       add_to_tmuxconf "${line}"
     done
+    append_instructions "append_to_file \" \"  \"${TMUX_PATH}\""
+    append_instructions "append_if_absent \"source ${TMUX_PATH}\" \"${TMUXCONF}\""
+    
   fi
 }
 
@@ -329,11 +331,12 @@ handle_ssh() {
     dlog "SSH is effected"
     check_required_files "${SSHCONF}"
     append_instructions "append_to_file \"# From ${config_name}\" \"${SSH_PATH}\""
-    append_instructions "append_to_file \" \"  \"${SSH_PATH}\""
-    append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
     for line in "${NEW_SSH_LINES[@]}"; do
       add_to_sshconf "${line}"
     done
+    append_instructions "append_to_file \" \"  \"${SSH_PATH}\""
+    append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
+    
   fi
 }
 
@@ -511,6 +514,9 @@ main() {
   OUT_DIR_PATH="${SCRIPT_DIR}/out/${CONFIG_NAME}"
   echo "#!/bin/bash" >"${INSTRUCTIONS_FILE}"
   append_instructions "OUT_DIR=\"${OUT_DIR_PATH}\""
+  append_instructions "prepare_backup_dir \$OUT_DIR"
+  append_instructions "rm -rf \$OUT_DIR"
+  append_instructions "mkdir -p \$OUT_DIR"
   
 
   echo "Building: $1"
