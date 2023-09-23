@@ -334,7 +334,7 @@ handle_ssh() {
     for line in "${NEW_SSH_LINES[@]}"; do
       add_to_sshconf "${line}"
     done
-    append_instructions "append_to_file \" \"  \"${SSH_PATH}\""
+    append_instructions "append_to_file \"END From \"  \"${SSH_PATH}\""
     append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
     
   fi
