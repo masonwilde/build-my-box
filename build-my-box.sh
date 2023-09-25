@@ -53,8 +53,6 @@ prepare_backup_dir() {
 is_line_in_file() {
   local line="$1"
   local file="$2"
-  local cmd=(-n "^${line}\$" "${file}")
-  local prev_line=$(grep "${cmd[@]}")
   if grep -q "$line" "$file"; then
     return 0
   fi
@@ -76,30 +74,6 @@ append_to_file() {
   indent prepare_backup_file "${file}"
   echo "${line}" >>"${file}"
 }
-
-if [[ ! -f "$SCRIPT_DIR"/build-my-box.conf ]]; then
-  echo "Missing ${SCRIPT_DIR}/build-my-box.conf"
-  exit 1
-fi
-. "$SCRIPT_DIR"/build-my-box.conf
-if [[ -z ${INSTALL_CMD:-} ]]; then
-  echo "Missing INSTALL_CMD in ${SCRIPT_DIR}/build-my-box.conf"
-  exit 1
-fi
-if [[ -z ${CHECK_CMD:-} ]]; then
-  echo "Missing CHECK_CMD in ${SCRIPT_DIR}/build-my-box.conf"
-  exit 1
-fi
-if [[ -z ${MAIN_REQUIRED_PKGS:-} ]]; then
-  echo "Missing MAIN_REQUIRED_PKGS in ${SCRIPT_DIR:-}/build-my-box.conf"
-  exit 1
-fi
-if [[ -z ${MAIN_REQUIRED_CONF_VARS:-} ]]; then
-  echo "Missing MAIN_REQUIRED_CONF_VARS in ${SCRIPT_DIR:-}/build-my-box.conf"
-  exit 1
-fi
-
-readonly INSTRUCTIONS="#!/bin/bash"
 
 usage() {
   echo "Usage: $0 [-v] [-x] [-d] <config>"
@@ -292,48 +266,64 @@ check_required_vars() {
 add_to_section() {
   local line="$1"
   local file="$2"
-  local marker="${config_name}"
-  if is_line_in_file "$marker"; then
-    return 1
+  local config_name="$3"
+  local marker="${END_SECTION_TAG} ${config_name}"
+  if is_line_in_file "$marker" "$file"; then
+    "sed s/\"^${marker}\"/\"${line}\n${marker}\"// $file"
   fi
-  sed
+}
+
+add_contents_to_config_section_in_file() {
+  local content_arr=($1)
+  local config_name="$2"
+  local target="$3"
+  append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${target}\""
+  append_instructions "append_if_absent \" ${END_SECTION_TAG} ${config_name}\" \"${target}\""
+  for content in "${content_arr[@]}"; do
+    # Need to sanitize/prepare vars for use in sed (/$"" use)
+    append_instructions "add_to_section \"${content}\" \"${config_name}\" \"${target}\""
+  done
 }
 
 handle_bash() {
   if [[ -n ${NEW_BASH_PATHS:-} || -n ${NEW_BASH_ALIASES:-} || -n ${NEW_BASH_FUNCTIONS:-} || -n ${NEW_BASH_ENV_VARS:-} ]]; then
     dlog "BASH is effected"
-    check_required_files "${BASHRC}" 
+    check_required_files "${BASHRC}"
     if [[ -n ${NEW_BASH_PATHS:-} ]]; then
-      append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${BASH_PATH_PATH}\""
-      append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${BASH_PATH_PATH}\""
-      for path in "${NEW_BASH_PATHS[@]}"; do
-        add_to_section "${path}" "${BASH_PATH_PATH}"
-      done
-      append_instructions "append_if_absent \"source ${BASH_PATH_PATH}\" \"${BASHRC}\""
+      add_contents_to_config_section_in_file "${NEW_BASH_PATHS[@]}" "$config_name" "$BASH_PATH_PATH"
+      # append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_PATH_PATH}\""
+      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_PATH_PATH}\""
+      # for path in "${NEW_BASH_PATHS[@]}"; do
+      #   append_instructions "add_to_section \"${path}\" \"${config_name}\" \"${BASH_PATH_PATH}\""
+      # done
+      # append_instructions "append_if_absent \"source ${BASH_PATH_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_ALIASES:-} ]]; then
-      append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${BASH_ALIASES_PATH}\""
-      append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${BASH_ALIASES_PATH}\""
-      for alias in "${NEW_BASH_ALIASES[@]}"; do
-        add_to_section "${alias}" "${BASH_ALIASES_PATH}"
-      done
-      append_instructions "append_if_absent \"source ${BASH_ALIASES_PATH}\" \"${BASHRC}\""
+      add_contents_to_config_section_in_file "${NEW_BASH_ALIASES[@]}" "$config_name" "$BASH_ALIASES_PATH"
+      # append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_ALIASES_PATH}\""
+      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_ALIASES_PATH}\""
+      # for alias in "${NEW_BASH_ALIASES[@]}"; do
+      #   append_instructions "add_to_section \"${alias}\" \"${config_name}\" \"${BASH_ALIASES_PATH}\""
+      # done
+      # append_instructions "append_if_absent \"source ${BASH_ALIASES_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_FUNCTIONS:-} ]]; then
-      append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${BASH_FUNCTIONS_PATH}\""
-      append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${BASH_FUNCTIONS_PATH}\""
+      # add_contents_to_config_section_in_file ${NEW_BASH_FUNCTIONS} "$config_name" "$BASH_FUNCTIONS_PATH"
+      append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
+      append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
       for func in "${NEW_BASH_FUNCTIONS[@]}"; do
-        add_to_section "${func}" "${BASH_FUNCTIONS_PATH}"
+        append_instructions "add_to_section \"${func}\" \"${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
       done
       append_instructions "append_if_absent \"source ${BASH_FUNCTIONS_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_ENV_VARS:-} ]]; then
-      append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${BASH_ENV_PATH}\""
-      append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${BASH_ENV_PATH}\""
-      for var in "${NEW_BASH_ENV_VARS[@]}"; do
-        add_to_section "${var}" "${BASH_ENV_PATH}"
-      done
-      append_instructions "append_if_absent \"source ${BASH_ENV_PATH}\" \"${BASHRC}\""
+      add_contents_to_config_section_in_file "${NEW_BASH_ENV_VARS[@]}" "$config_name" "$BASH_ENV_PATH"
+      # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${BASH_ENV_PATH}\""
+      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_ENV_PATH}\""
+      # for var in "${NEW_BASH_ENV_VARS[@]}"; do
+      #   append_instructions "add_to_section \"${var}\" \"${config_name}\" \"${BASH_ENV_PATH}\""
+      # done
+      # append_instructions "append_if_absent \"source ${BASH_ENV_PATH}\" \"${BASHRC}\""
     fi
   fi
 }
@@ -342,13 +332,13 @@ handle_vim() {
   if [[ -n ${NEW_VIM_LINES:-} ]]; then
     dlog "VIM is effected"
     check_required_files "${VIMRC}"
-    append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${VIM_PATH}\""
-    append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${VIM_PATH}\""
-    for line in "${NEW_VIM_LINES[@]}"; do
-      add_to_section "${line}" "${VIM_PATH}"
-    done
-    append_instructions "append_if_absent \"source ${VIM_PATH}\" \"${VIMRC}\""
-    
+    add_contents_to_config_section_in_file "${NEW_VIM_LINES[@]}" "$config_name" "$VIM_PATH"
+    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${VIM_PATH}\""
+    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${VIM_PATH}\""
+    # for line in "${NEW_VIM_LINES[@]}"; do
+    #   append_instructions "add_to_section \"${line}\" \"${config_name}\" \"${VIM_PATH}\""
+    # done
+    # append_instructions "append_if_absent \"source ${VIM_PATH}\" \"${VIMRC}\""
   fi
 }
 
@@ -356,13 +346,13 @@ handle_tmux() {
   if [[ -n ${NEW_TMUX_LINES:-} ]]; then
     dlog "TMUX is effected"
     check_required_files "${TMUXCONF}"
-    append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${TMUX_PATH}\""
-    append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${TMUX_PATH}\""
-    for line in "${NEW_TMUX_LINES[@]}"; do
-      add_to_section "${line}" "${TMUX_PATH}"
-    done
-    append_instructions "append_if_absent \"source ${TMUX_PATH}\" \"${TMUXCONF}\""
-    
+    add_contents_to_config_section_in_file "${NEW_TMUX_LINES[@]}" "$config_name" "$TMUX_PATH"
+    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${TMUX_PATH}\""
+    # append_instructions "append_if_absent \" ${END_SECTION_TAG} ${config_name}\" \"${TMUX_PATH}\""
+    # for line in "${NEW_TMUX_LINES[@]}"; do
+    #   append_instructions "add_to_section \"${func}\" \"${config_name}\" \"${TMUX_PATH}\""
+    # done
+    # append_instructions "append_if_absent \"source ${TMUX_PATH}\" \"${TMUXCONF}\""
   fi
 }
 
@@ -370,13 +360,13 @@ handle_ssh() {
   if [[ -n ${NEW_SSH_LINES:-} ]]; then
     dlog "SSH is effected"
     check_required_files "${SSHCONF}"
-    append_instructions "append_if_absent \"${START_SECTION_TAG}\" \"${SSH_PATH}\""
-    append_instructions "append_if_absent \"${END_SECTION_TAG}\" \"${SSH_PATH}\""
-    for line in "${NEW_SSH_LINES[@]}"; do
-      add_to_section "${line}" "${SSH_PATH}"
-    done
-    append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
-    
+    add_contents_to_config_section_in_file "${NEW_SSH_LINES[@]}" "$config_name" "$SSH_CONF"
+    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${SSH_PATH}\""
+    # append_instructions "append_if_absent \" ${END_SECTION_TAG} ${config_name}\" \"${SSH_PATH}\""
+    # for line in "${NEW_SSH_LINES[@]}"; do
+    #   append_instructions "add_to_section \"${line}\" \"${config_name}\" \"${SSH_PATH}\""
+    # done
+    # append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
   fi
 }
 
@@ -388,9 +378,9 @@ handle_repos() {
       regex='[/]([^/]*[/][^/]*)[.]git$'
       if [[ $repo =~ $regex ]]; then
         local repo_name="${BASH_REMATCH[1]}"
-        append_instructions "git clone \"${repo}\" \"${REPOS_DIR}/${repo_name}\""
+        append_instructions "git clone \"${repo}\" \"${REPOS_DIR}${repo_name}\""
       else
-        # append_instructions "# TODO: set location: git clone \"${repo}\" \"${REPOS_DIR}/${BASH_REMATCH[1]}\""
+        return 1 # append_instructions "# TODO: set location: git clone \"${repo}\" \"${REPOS_DIR}/${BASH_REMATCH[1]}\""
       fi
     done
   fi
@@ -411,8 +401,8 @@ handle_reqs() {
 }
 
 generate_for_config() {
-  local config_name="$1"
-  local config=$config_name
+  local config="$1"
+  local config_name="$(basename $config .conf)"
   if [[ ! -f "${config}" ]]; then
     vlog "Config file not found: ${config}. Looking in configs/."
     config="${SCRIPT_DIR}/configs/${config}.conf"
@@ -431,7 +421,7 @@ generate_for_config() {
   dlog "Config: ${config}"
 
   dlog "DEPENDENCIES: ${DEPENDENCIES[*]:-}"
-  
+
   if [[ -n ${DEPENDENCIES:-} ]]; then
     echo "Generating dependencies"
     indent generate_dependencies "${DEPENDENCIES[@]}"
@@ -450,7 +440,7 @@ generate_for_config() {
   dlog "NEW_SSH_LINES: ${NEW_SSH_LINES[*]:-}"
   dlog "NEW_GIT_REPOS: ${NEW_GIT_REPOS[*]:-}"
 
-  append_instructions "${START_SECTION_TAG}"
+  append_instructions "${START_SECTION_TAG} $config_name"
 
   indent handle_reqs
   indent handle_bash
@@ -459,13 +449,18 @@ generate_for_config() {
   indent handle_ssh
   indent handle_repos
 
-  append_instructions "${END_SECTION_TAG}"
+  append_instructions "${END_SECTION_TAG} $config_name"
 }
 
 generate_dependencies() {
   for dep in "$@"; do
+    # Avoid circular dependency.
+    if [[ ${SEEN_DEPS:-} =~ \s$dep\s ]]; then
+      vlog "Saw $dep before...skipping to avoid loops."
+      continue
+    fi
     echo "Generating dependency: ${dep}"
-    indent build "${dep}"
+    indent generate_for_config "${dep}"
     if [[ $? -ne 0 ]]; then
       err "Failed to build dependency: ${dep}"
       exit 1
@@ -489,6 +484,54 @@ check_required_dirs() {
   done
 }
 
+get_vars_rec() {
+  local config="$1"
+  local config_name="$(basename $config .conf)"
+  if [[ ! -f "${config}" ]]; then
+    vlog "Config file not found: ${config}. Looking in configs/."
+    config="${SCRIPT_DIR}/configs/${config}.conf"
+    if [[ ! -f "${config}" ]]; then
+      err "Config file not found for: ${config_name}"
+      exit 1
+    fi
+  fi
+  readonly config
+  . "${config}"
+  vlog "VARS from $config_name"
+  for var in "${REQUIRED_VARS[@]}"; do
+    echo "$var"
+    SEEN_VARS+=($var)
+    echo "${SEEN_VARS[@]}"
+  done
+  if [[ -n ${DEPENDENCIES:-} ]]; then
+    for dep in "${DEPENDENCIES[@]}"; do
+      indent get_vars_rec "$dep"
+    done
+  fi
+}
+
+get_all_required_vars() {
+  if [[ $# -ne 1 ]]; then
+    echo "Provide a config file"
+    usage
+  fi
+  CONFIG_NAME="$(basename $1 .conf)"
+  MAIN_CONF="$CONFIG_NAME"
+  . "$SCRIPT_DIR"/build-my-box.conf
+  verify_main_conf
+  SEEN_VARS=()
+  get_vars_rec "$1"
+  echo "${SEEN_VARS[@]}"
+  for var in "${SEEN_VARS[@]}"; do
+    echo "$var"
+    if [[ -z "${var:-}" ]]; then
+      printf "Enter a value for var '$var':"
+      read $input
+      echo "$input"
+    fi
+  done
+}
+
 append_instructions() {
   local line="$1"
   if [[ -f "${INSTRUCTIONS_FILE}" ]]; then
@@ -497,7 +540,7 @@ append_instructions() {
       prev_line_num="${BASH_REMATCH[1]}"
       line="# $line # Previous line: ${prev_line_num}"
     fi
-    echo -e "$line" >>"${INSTRUCTIONS_FILE}"
+    echo "$line" >>"${INSTRUCTIONS_FILE}"
   fi
 }
 
@@ -506,7 +549,7 @@ Run_Instructions() {
     echo "Provide an instruction file"
     usage
   fi
-  INSTRUCTIONS_FILE="$1"
+  local INSTRUCTIONS_FILE="$1"
   readonly INSTRUCTIONS_FILE
   if [[ ! -f "${INSTRUCTIONS_FILE}" ]]; then
     err "no instructions file found at ${INSTRUCTIONS}"
@@ -514,6 +557,9 @@ Run_Instructions() {
   fi
   if [[ $INSTRUCTIONS_FILE =~ (.+)-instructions[.]sh ]]; then
     TOP_CONF="${BASH_REMATCH[1]}"
+    MAIN_CONF="$TOP_CONF"
+    . "$SCRIPT_DIR"/build-my-box.conf
+    verify_main_conf
   else
     err "instructions file name must be of the form <top-level-conf>-instructions.sh"
     exit 1
@@ -532,20 +578,45 @@ Generate_Instructions() {
     usage
   fi
   CONFIG_NAME="$(basename $1 .conf)"
+  MAIN_CONF="$CONFIG_NAME"
+  . "$SCRIPT_DIR"/build-my-box.conf
+  verify_main_conf
   check_required_packages "${MAIN_REQUIRED_PKGS[@]}"
 
-  INSTRUCTIONS_FILE="${SCRIPT_DIR}/$(basename $1 .conf)-instructions.sh"
+  local INSTRUCTIONS_FILE="${SCRIPT_DIR}/${MAIN_CONF}-instructions.sh"
   readonly INSTRUCTIONS_FILE
-  OUT_DIR_PATH="${SCRIPT_DIR}/out/${CONFIG_NAME}"
+  OUT_DIR_PATH="${SCRIPT_DIR}/out/${MAIN_CONF}"
   echo "#!/bin/bash" >"${INSTRUCTIONS_FILE}"
-  append_instructions "OUT_DIR=\"${OUT_DIR_PATH}\""
+  append_instructions "OUT_DIR=\"${OUT_DIR}\""
   append_instructions "prepare_backup_dir \$OUT_DIR"
   append_instructions "rm -rf \$OUT_DIR"
   append_instructions "mkdir -p \$OUT_DIR"
 
+  local SEEN_DEPS=()
+
   echo "Building: $1"
-  indent build "$1"
+  indent generate_for_config "$1"
   echo "Done building: $1"
+}
+
+verify_main_conf() {
+  # . "$SCRIPT_DIR"/build-my-box.conf
+  if [[ -z ${INSTALL_CMD} ]]; then
+    echo "Missing INSTALL_CMD in ${SCRIPT_DIR}/build-my-box.conf"
+    exit 1
+  fi
+  if [[ -z ${CHECK_CMD} ]]; then
+    echo "Missing CHECK_CMD in ${SCRIPT_DIR}/build-my-box.conf"
+    exit 1
+  fi
+  if [[ -z ${MAIN_REQUIRED_PKGS} ]]; then
+    echo "Missing MAIN_REQUIRED_PKGS in ${SCRIPT_DIR:-}/build-my-box.conf"
+    exit 1
+  fi
+  if [[ -z ${MAIN_REQUIRED_CONF_VARS} ]]; then
+    echo "Missing MAIN_REQUIRED_CONF_VARS in ${SCRIPT_DIR:-}/build-my-box.conf"
+    exit 1
+  fi
 }
 
 main() {
@@ -579,14 +650,22 @@ main() {
   readonly DEBUG
   dlog "VERBOSE: ${VERBOSE}\nEXECUTE: ${EXECUTE}\nDEBUG: ${DEBUG}"
   shift $((OPTIND - 1))
+  if [[ ! -f "$SCRIPT_DIR"/build-my-box.conf ]]; then
+    echo "Missing ${SCRIPT_DIR}/build-my-box.conf"
+    exit 1
+  fi
+
   local sub_arg="$1"
-  shift $((OPTIND - 1))
+  shift 1
   case "$sub_arg" in
   Generate_Instructions)
-    Generate_Instructions $*
+    Generate_Instructions $@
     ;;
   Run_Instructions)
-    Run_Instructions $*
+    Run_Instructions $@
+    ;;
+  get_all_required_vars)
+    get_all_required_vars $@
     ;;
   *)
     usage
