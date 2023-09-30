@@ -6,6 +6,31 @@ TOP_CONF=""
 set -euo pipefail
 
 #######################################
+# General Script Tools
+#######################################
+
+#######################################
+# Prints usage output.
+# Named "line" but technically any string.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   Exit 1
+# Outputs:
+#   Exit 1
+#######################################
+usage() {
+  echo "Usage: $0 [-v] [-x] [-d] <config>"
+  echo "  -v: verbose"
+  echo "  -x: execute"
+  echo "  -d: debug"
+  echo "  <config>: config file to use"
+  exit 1
+}
+
+#######################################
 # Indents all output recursively
 # Globals:
 #   None
@@ -25,63 +50,58 @@ indent() {
 }
 
 #######################################
-# Creates a .bak version of a file if it exists and plans a command to undo it.
+# Prints a message to stdout if VERBOSE is true.
 # Globals:
-#   None
+#   VERBOSE
 # Arguments:
-#   filepath of the file
+#   Log message
 # Returns:
 #   None
 # Outputs:
-#   Possibly creates a .bak file and appends a command to undo it.
+#   Prints log message to stdout.
 #######################################
-prepare_backup_file() {
-  local file="$1"
-  if [[ $file =~ undo-${TOP_CONF}[.]sh ]]; then
-    return
-  fi
-  if [[ ! -d $(dirname "${file}") ]]; then
-    indent prepare_backup_dir $(dirname "${file}")
-  fi
-  if [[ ! -f "${file}" ]]; then
-    echo "MAKE NEW FILE: ${file}"
-    touch "$file"
-    indent append_to_file "rm ${file}" "$UNDO_FILE"
-  else
-    if [[ ! -f "${file}.${TOP_CONF}.bak" ]]; then
-      echo "BACKUP FILE: ${file}"
-      cp "${file}" "${file}.${TOP_CONF}.bak"
-      indent append_if_absent "cp ${file}.${TOP_CONF}.bak ${file}" "$UNDO_FILE"
-    fi
+vlog() {
+  if [[ "${VERBOSE}" == 'true' ]]; then
+    echo "$*"
   fi
 }
 
 #######################################
-# Creates a .bak version of a dir if it exists and plans a command to undo it.
+# Prints a message to stdout if DEBUG is true.
 # Globals:
-#   None
+#   DEBUG
 # Arguments:
-#   dirpath of the dir
+#   Log message
 # Returns:
 #   None
 # Outputs:
-#   Possibly creates a .bak dir and appends a command to undo it.
+#   Prints log message to stdout.
 #######################################
-prepare_backup_dir() {
-  local dir="$1"
-  if [[ ! -d "${dir}" ]]; then
-    echo "MAKE NEW DIR: ${dir}"
-    mkdir -p "$dir"
-    indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
-  else
-    if [[ ! -f "${dir}.${TOP_CONF}.bak" ]]; then
-      echo "BACKUP DIR: ${dir}"
-      cp -r "${dir}" "${dir}.${TOP_CONF}.bak"
-      indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
-      indent append_to_file "cp -r ${dir}.${TOP_CONF}.bak/ ${dir}" "$UNDO_FILE"
-    fi
+dlog() {
+  if [[ "${DEBUG}" == 'true' ]]; then
+    echo -e "$*"
   fi
 }
+
+#######################################
+# Prints an error message to stderr.
+# Globals:
+#   None
+# Arguments:
+#   Error message
+# Returns:
+#   None
+# Outputs:
+#   Prints error message to stderr.
+#######################################
+err() {
+  append_instructions "# DO NOT SUBMIT: $*"
+  echo "ERROR [$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
+}
+
+#######################################
+# File Mutation/Verification Tools
+#######################################
 
 #######################################
 # Checks if a string is in a file.
@@ -147,206 +167,6 @@ append_to_file() {
 }
 
 #######################################
-# Prints usage output.
-# Named "line" but technically any string.
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   Exit 1
-# Outputs:
-#   Exit 1
-#######################################
-usage() {
-  echo "Usage: $0 [-v] [-x] [-d] <config>"
-  echo "  -v: verbose"
-  echo "  -x: execute"
-  echo "  -d: debug"
-  echo "  <config>: config file to use"
-  exit 1
-}
-
-#######################################
-# Prints a message to stdout if VERBOSE is true.
-# Globals:
-#   VERBOSE
-# Arguments:
-#   Log message
-# Returns:
-#   None
-# Outputs:
-#   Prints log message to stdout.
-#######################################
-vlog() {
-  if [[ "${VERBOSE}" == 'true' ]]; then
-    echo "$*"
-  fi
-}
-
-#######################################
-# Prints a message to stdout if DEBUG is true.
-# Globals:
-#   DEBUG
-# Arguments:
-#   Log message
-# Returns:
-#   None
-# Outputs:
-#   Prints log message to stdout.
-#######################################
-dlog() {
-  if [[ "${DEBUG}" == 'true' ]]; then
-    echo -e "$*"
-  fi
-}
-
-#######################################
-# Logs a command to be executed or would be executed.
-# Globals:
-#   EXECUTE
-# Arguments:
-#   Command to execute and/or log
-# Returns:
-#   None
-# Outputs:
-#   executes or logs command
-#######################################
-execute_or_log() {
-  if [[ "${EXECUTE}" == 'true' ]]; then
-    err "You ran with -x, but execution is blocked for security"
-    # vlog "Running: $*"
-    # "$@"
-    # return $?
-  else
-    append_instructions "$*"
-  fi
-}
-
-#######################################
-# Die if not executing.
-# Globals:
-#   EXECUTE
-# Arguments:
-#   None
-# Returns:
-#   None
-# Outputs:
-#   Exits with error if not executing.
-#######################################
-die_if_not_executing() {
-  if [[ "${EXECUTE}" == 'false' ]]; then
-    err "Cannot continue without -x option."
-    exit 1
-  fi
-}
-
-#######################################
-# Prints an error message to stderr.
-# Globals:
-#   None
-# Arguments:
-#   Error message
-# Returns:
-#   None
-# Outputs:
-#   Prints error message to stderr.
-#######################################
-err() {
-  append_instructions "# DO NOT SUBMIT: $*"
-  echo "ERROR [$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
-}
-
-#######################################
-# Used to indent output.
-# Globals:
-#   None
-# Arguments:
-#   Command to indent
-# Returns:
-#   None
-# Outputs:
-#   All output indented by 2 spaces.
-#######################################
-indent() {
-  #"$@" > >(sed 's/^/  /') 2> >(sed 's/^/  /' >&2)
-  local indent=${INDENT:-"    "}
-  # Hacky, but captures stderr without lagging behind stdout.
-  { "$@" 2> >(sed "s/^/$indent/g" >&2); } | sed "s/^/$indent/g"
-  return $?
-}
-
-#######################################
-# Checks if a command is installed.
-# Globals:
-#   None
-# Arguments:
-#   Command to check for
-# Returns:
-#   0 if command is installed, 1 otherwise
-# Outputs:
-#   None
-#######################################
-has_package() {
-  if ! $($CHECK_CMD "$1" &>/dev/null); then
-    vlog "Missing command: $1"
-    return 1
-  fi
-  dlog "Found command: $1"
-}
-
-#######################################
-# Verify that required packages are installed.
-# Globals:
-#   INSTALL_CMD
-# Arguments:
-#   packages to check for
-# Returns:
-#   None
-# Outputs:
-#   Installs missing packages if EXECUTE.
-#######################################
-check_required_packages() {
-  dlog "Checking for required commands: $*"
-  local missing=()
-  for cmd in "$@"; do
-    if ! has_package "$cmd"; then
-      missing+=("$cmd")
-    fi
-  done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    vlog "Missing required commands: ${missing[*]}"
-    execute_or_log "$INSTALL_CMD" "${missing[@]}"
-    die_if_not_executing
-  fi
-}
-
-#######################################
-# Verify that config has all vars
-# Globals:
-#   None
-# Arguments:
-#   Vars to check for
-# Returns:
-#   None
-# Outputs:
-#   None.
-#######################################
-check_required_vars() {
-  dlog "Checking for required vars: $*"
-  local missing=()
-  for v in "$@"; do
-    if [[ -z ${!v} ]]; then
-      missing+=("$v")
-    fi
-  done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    err "Missing required vars in config: ${missing[*]}"
-    exit 1
-  fi
-}
-
-#######################################
 # Inserts a string in a config section in a file.
 # Globals:
 #   None
@@ -395,6 +215,278 @@ add_contents_to_config_section_in_file() {
     append_instructions "add_to_section \"${content}\" \"${config_name}\" \"${target}\""
   done
 }
+
+#######################################
+# Appends an instruction to the instruction file.
+# Globals:
+#   None
+# Arguments:
+#   line to append
+# Returns:
+#   None
+# Outputs:
+#   Appends to instruction file
+#######################################
+append_instructions() {
+  local line="$1"
+  if [[ -f "${INSTRUCTIONS_FILE}" ]]; then
+    local prev_line=$(grep -n "^${line}$$" "${INSTRUCTIONS_FILE}")
+    if [[ $prev_line =~ "([0-9]+[:])" ]]; then
+      prev_line_num="${BASH_REMATCH[1]}"
+      line="# $line # Previous line: ${prev_line_num}"
+    fi
+    echo "$line" >>"${INSTRUCTIONS_FILE}"
+  fi
+}
+
+#######################################
+# Backup Tools
+#######################################
+
+#######################################
+# Creates a .bak version of a file if it exists and plans a command to undo it.
+# Globals:
+#   None
+# Arguments:
+#   filepath of the file
+# Returns:
+#   None
+# Outputs:
+#   Possibly creates a .bak file and appends a command to undo it.
+#######################################
+prepare_backup_file() {
+  local file="$1"
+  if [[ $file =~ undo-${TOP_CONF}[.]sh ]]; then
+    return
+  fi
+  if [[ ! -d $(dirname "${file}") ]]; then
+    indent prepare_backup_dir $(dirname "${file}")
+  fi
+  if [[ ! -f "${file}" ]]; then
+    echo "MAKE NEW FILE: ${file}"
+    touch "$file"
+    indent append_to_file "rm ${file}" "$UNDO_FILE"
+  else
+    if [[ ! -f "${file}.${TOP_CONF}.bak" ]]; then
+      echo "BACKUP FILE: ${file}"
+      cp "${file}" "${file}.${TOP_CONF}.bak"
+      indent append_if_absent "cp ${file}.${TOP_CONF}.bak ${file}" "$UNDO_FILE"
+    fi
+  fi
+}
+
+#######################################
+# Creates a .bak version of a dir if it exists and plans a command to undo it.
+# Globals:
+#   None
+# Arguments:
+#   dirpath of the dir
+# Returns:
+#   None
+# Outputs:
+#   Possibly creates a .bak dir and appends a command to undo it.
+#######################################
+prepare_backup_dir() {
+  local dir="$1"
+  if [[ ! -d "${dir}" ]]; then
+    echo "MAKE NEW DIR: ${dir}"
+    mkdir -p "$dir"
+    indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
+  else
+    if [[ ! -f "${dir}.${TOP_CONF}.bak" ]]; then
+      echo "BACKUP DIR: ${dir}"
+      cp -r "${dir}" "${dir}.${TOP_CONF}.bak"
+      indent append_to_file "rm -rf ${dir}" "$UNDO_FILE"
+      indent append_to_file "cp -r ${dir}.${TOP_CONF}.bak/ ${dir}" "$UNDO_FILE"
+    fi
+  fi
+}
+
+#######################################
+# Other Tools
+#######################################
+
+#######################################
+# Checks if a command is installed.
+# Globals:
+#   None
+# Arguments:
+#   Command to check for
+# Returns:
+#   0 if command is installed, 1 otherwise
+# Outputs:
+#   None
+#######################################
+has_package() {
+  if ! $($CHECK_CMD "$1" &>/dev/null); then
+    vlog "Missing command: $1"
+    return 1
+  fi
+  dlog "Found command: $1"
+}
+
+#######################################
+# Verify that required packages are installed.
+# Globals:
+#   INSTALL_CMD
+# Arguments:
+#   packages to check for
+# Returns:
+#   None
+# Outputs:
+#   Installs missing packages if EXECUTE.
+#######################################
+check_required_packages() {
+  dlog "Checking for required commands: $*"
+  local missing=()
+  for cmd in "$@"; do
+    if ! has_package "$cmd"; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    vlog "Missing required commands: ${missing[*]}"
+    execute_or_log "$INSTALL_CMD" "${missing[@]}"
+    die_if_not_executing
+  fi
+}
+
+#######################################
+# Checks that required files exist.
+# Globals:
+#   None
+# Arguments:
+#   list of files
+# Returns:
+#   Exit 1 if any file is missing
+# Outputs:
+#   None
+#######################################
+check_required_files() {
+  for f in "$@"; do
+    if [[ ! -f "${f}" ]]; then
+      err "Missing file: ${f}"
+      exit 1
+    fi
+  done
+}
+
+#######################################
+# Checks that required dirs exist.
+# Globals:
+#   None
+# Arguments:
+#   list of dirs
+# Returns:
+#   Exit 1 if any dir is missing
+# Outputs:
+#   None
+#######################################
+check_required_dirs() {
+  for d in "$@"; do
+    err "Missing dir: ${d}"
+    exit 1
+  done
+}
+
+#######################################
+# Creates a list of all required vars in SEEN_VARS
+# Globals:
+#   SEEN_VARS
+# Arguments:
+#   config to start from
+# Returns:
+#   Exit 1 if any config isn't found
+# Outputs:
+#   None
+#######################################
+get_vars_rec() {
+  local config="$1"
+  local config_name="$(basename $config .conf)"
+  if [[ ! -f "${config}" ]]; then
+    vlog "Config file not found: ${config}. Looking in configs/."
+    config="${SCRIPT_DIR}/configs/${config}.conf"
+    if [[ ! -f "${config}" ]]; then
+      err "Config file not found for: ${config_name}"
+      exit 1
+    fi
+  fi
+  readonly config
+  . "${config}"
+  vlog "VARS from $config_name"
+  for var in "${REQUIRED_VARS[@]}"; do
+    echo "$var"
+    SEEN_VARS+=($var)
+    echo "${SEEN_VARS[@]}"
+  done
+  if [[ -n ${DEPENDENCIES:-} ]]; then
+    for dep in "${DEPENDENCIES[@]}"; do
+      indent get_vars_rec "$dep"
+    done
+  fi
+}
+
+#######################################
+# Gets user values for any missing required vars.
+# Globals:
+#   None
+# Arguments:
+#   config to check
+# Returns:
+#   Exit 1 if any config is missing
+# Outputs:
+#   Creates a sourced config file of user values.
+#######################################
+get_all_required_vars() {
+  if [[ $# -ne 1 ]]; then
+    echo "Provide a config file"
+    usage
+  fi
+  CONFIG_NAME="$(basename $1 .conf)"
+  MAIN_CONF="$CONFIG_NAME"
+  . "$SCRIPT_DIR"/build-my-box.conf
+  verify_main_conf
+  SEEN_VARS=()
+  get_vars_rec "$1"
+  echo "${SEEN_VARS[@]}"
+  for var in "${SEEN_VARS[@]}"; do
+    echo "$var"
+    if [[ -z "${var:-}" ]]; then
+      printf "Enter a value for var '$var':"
+      read $input
+      echo "$input"
+    fi
+  done
+}
+
+#######################################
+# Verify that config has all vars
+# Globals:
+#   None
+# Arguments:
+#   Vars to check for
+# Returns:
+#   None
+# Outputs:
+#   None.
+#######################################
+check_required_vars() {
+  dlog "Checking for required vars: $*"
+  local missing=()
+  for v in "$@"; do
+    if [[ -z ${!v} ]]; then
+      missing+=("$v")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    err "Missing required vars in config: ${missing[*]}"
+    exit 1
+  fi
+}
+
+#######################################
+# Handlers
+#######################################
 
 #######################################
 # Handle additions to bash related files.
@@ -548,6 +640,10 @@ handle_reqs() {
 }
 
 #######################################
+# Core Methods
+#######################################
+
+#######################################
 # Generate instructions for a given config name/path.
 # Globals:
 #   SCRIPT_DIR
@@ -639,137 +735,6 @@ generate_dependencies() {
     fi
     echo "Done generating dependency: ${dep}"
   done
-}
-
-#######################################
-# Checks that required files exist.
-# Globals:
-#   None
-# Arguments:
-#   list of files
-# Returns:
-#   Exit 1 if any file is missing
-# Outputs:
-#   None
-#######################################
-check_required_files() {
-  for f in "$@"; do
-    if [[ ! -f "${f}" ]]; then
-      err "Missing file: ${f}"
-      exit 1
-    fi
-  done
-}
-
-#######################################
-# Checks that required dirs exist.
-# Globals:
-#   None
-# Arguments:
-#   list of dirs
-# Returns:
-#   Exit 1 if any dir is missing
-# Outputs:
-#   None
-#######################################
-check_required_dirs() {
-  for d in "$@"; do
-    err "Missing dir: ${d}"
-    exit 1
-  done
-}
-
-#######################################
-# Creates a list of all required vars in SEEN_VARS
-# Globals:
-#   SEEN_VARS
-# Arguments:
-#   config to start from
-# Returns:
-#   Exit 1 if any config isn't found
-# Outputs:
-#   None
-#######################################
-get_vars_rec() {
-  local config="$1"
-  local config_name="$(basename $config .conf)"
-  if [[ ! -f "${config}" ]]; then
-    vlog "Config file not found: ${config}. Looking in configs/."
-    config="${SCRIPT_DIR}/configs/${config}.conf"
-    if [[ ! -f "${config}" ]]; then
-      err "Config file not found for: ${config_name}"
-      exit 1
-    fi
-  fi
-  readonly config
-  . "${config}"
-  vlog "VARS from $config_name"
-  for var in "${REQUIRED_VARS[@]}"; do
-    echo "$var"
-    SEEN_VARS+=($var)
-    echo "${SEEN_VARS[@]}"
-  done
-  if [[ -n ${DEPENDENCIES:-} ]]; then
-    for dep in "${DEPENDENCIES[@]}"; do
-      indent get_vars_rec "$dep"
-    done
-  fi
-}
-
-#######################################
-# Gets user values for any missing required vars.
-# Globals:
-#   None
-# Arguments:
-#   config to check
-# Returns:
-#   Exit 1 if any config is missing
-# Outputs:
-#   Creates a sourced config file of user values.
-#######################################
-get_all_required_vars() {
-  if [[ $# -ne 1 ]]; then
-    echo "Provide a config file"
-    usage
-  fi
-  CONFIG_NAME="$(basename $1 .conf)"
-  MAIN_CONF="$CONFIG_NAME"
-  . "$SCRIPT_DIR"/build-my-box.conf
-  verify_main_conf
-  SEEN_VARS=()
-  get_vars_rec "$1"
-  echo "${SEEN_VARS[@]}"
-  for var in "${SEEN_VARS[@]}"; do
-    echo "$var"
-    if [[ -z "${var:-}" ]]; then
-      printf "Enter a value for var '$var':"
-      read $input
-      echo "$input"
-    fi
-  done
-}
-
-#######################################
-# Appends an instruction to the instruction file.
-# Globals:
-#   None
-# Arguments:
-#   line to append
-# Returns:
-#   None
-# Outputs:
-#   Appends to instruction file
-#######################################
-append_instructions() {
-  local line="$1"
-  if [[ -f "${INSTRUCTIONS_FILE}" ]]; then
-    local prev_line=$(grep -n "^${line}$$" "${INSTRUCTIONS_FILE}")
-    if [[ $prev_line =~ "([0-9]+[:])" ]]; then
-      prev_line_num="${BASH_REMATCH[1]}"
-      line="# $line # Previous line: ${prev_line_num}"
-    fi
-    echo "$line" >>"${INSTRUCTIONS_FILE}"
-  fi
 }
 
 #######################################
@@ -934,13 +899,13 @@ main() {
   shift 1
   case "$sub_arg" in
   Generate_Instructions)
-    Generate_Instructions $@
+    Generate_Instructions "$@"
     ;;
   Run_Instructions)
-    Run_Instructions $@
+    Run_Instructions "$@"
     ;;
   get_all_required_vars)
-    get_all_required_vars $@
+    get_all_required_vars "$@"
     ;;
   *)
     usage
