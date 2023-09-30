@@ -5,6 +5,17 @@ TOP_CONF=""
 
 set -euo pipefail
 
+#######################################
+# Indents all output recursively
+# Globals:
+#   None
+# Arguments:
+#   Command with output to indent
+# Returns:
+#   None
+# Outputs:
+#   none.
+#######################################
 indent() {
   #"$@" > >(sed 's/^/  /') 2> >(sed 's/^/  /' >&2)
   local indent=${INDENT:-"    "}
@@ -13,6 +24,17 @@ indent() {
   return $?
 }
 
+#######################################
+# Creates a .bak version of a file if it exists and plans a command to undo it.
+# Globals:
+#   None
+# Arguments:
+#   filepath of the file
+# Returns:
+#   None
+# Outputs:
+#   Possibly creates a .bak file and appends a command to undo it.
+#######################################
 prepare_backup_file() {
   local file="$1"
   if [[ $file =~ undo-${TOP_CONF}[.]sh ]]; then
@@ -34,6 +56,17 @@ prepare_backup_file() {
   fi
 }
 
+#######################################
+# Creates a .bak version of a dir if it exists and plans a command to undo it.
+# Globals:
+#   None
+# Arguments:
+#   dirpath of the dir
+# Returns:
+#   None
+# Outputs:
+#   Possibly creates a .bak dir and appends a command to undo it.
+#######################################
 prepare_backup_dir() {
   local dir="$1"
   if [[ ! -d "${dir}" ]]; then
@@ -50,6 +83,19 @@ prepare_backup_dir() {
   fi
 }
 
+#######################################
+# Checks if a string is in a file.
+# Named "line" but technically any string.
+# Globals:
+#   None
+# Arguments:
+#   line to check for
+#   file to check in
+# Returns:
+#   0 if line is in file, 1 otherwise
+# Outputs:
+#   none.
+#######################################
 is_line_in_file() {
   local line="$1"
   local file="$2"
@@ -59,14 +105,39 @@ is_line_in_file() {
   return 1
 }
 
+#######################################
+# Appends a string to a file if it is not already there.
+#
+# Globals:
+#   None
+# Arguments:
+#   string to append
+#   file to append to
+# Returns:
+#   None
+# Outputs:
+#   Appends string to file if it is not already there.
+#######################################
 append_if_absent() {
-  local line="$1"
+  local string="$1"
   local file="$2"
-  if is_line_in_file "$line" "$file"; then
-    indent append_to_file "${line}" "${file}"
+  if is_line_in_file "$string" "$file"; then
+    indent append_to_file "${string}" "${file}"
   fi
 }
 
+#######################################
+# Appends a string to a file.
+# Globals:
+#   None
+# Arguments:
+#   string to append
+#   file to append to
+# Returns:
+#   None
+# Outputs:
+#   None.
+#######################################
 append_to_file() {
   local line="$1"
   local file="$2"
@@ -75,6 +146,18 @@ append_to_file() {
   echo "${line}" >>"${file}"
 }
 
+#######################################
+# Prints usage output.
+# Named "line" but technically any string.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   Exit 1
+# Outputs:
+#   Exit 1
+#######################################
 usage() {
   echo "Usage: $0 [-v] [-x] [-d] <config>"
   echo "  -v: verbose"
@@ -263,6 +346,19 @@ check_required_vars() {
   fi
 }
 
+#######################################
+# Inserts a string in a config section in a file.
+# Globals:
+#   None
+# Arguments:
+#   line to insert
+#   file to check in/insert into
+#   config_name to insert into
+# Returns:
+#   0 if insertion occurs, 1 otherwise
+# Outputs:
+#   None
+#######################################
 add_to_section() {
   local line="$1"
   local file="$2"
@@ -270,9 +366,24 @@ add_to_section() {
   local marker="${END_SECTION_TAG} ${config_name}"
   if is_line_in_file "$marker" "$file"; then
     "sed s/\"^${marker}\"/\"${line}\n${marker}\"// $file"
+    return 0
   fi
+  return 1
 }
 
+#######################################
+# Helper function to add instructions to add content to a file in a section
+# Globals:
+#   None
+# Arguments:
+#   content_arr of strings to add
+#   config_name of the section to add to
+#   target file to eventually add to
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 add_contents_to_config_section_in_file() {
   local content_arr=($1)
   local config_name="$2"
@@ -285,29 +396,33 @@ add_contents_to_config_section_in_file() {
   done
 }
 
+#######################################
+# Handle additions to bash related files.
+# Globals:
+#   NEW_BASH_PATHS
+#   NEW_BASH_ALIASES
+#   NEW_BASH_FUNCTIONS
+#   NEW_BASH_ENV_VARS
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_bash() {
+  # TODO: possibly change to pass args
   if [[ -n ${NEW_BASH_PATHS:-} || -n ${NEW_BASH_ALIASES:-} || -n ${NEW_BASH_FUNCTIONS:-} || -n ${NEW_BASH_ENV_VARS:-} ]]; then
     dlog "BASH is effected"
     check_required_files "${BASHRC}"
     if [[ -n ${NEW_BASH_PATHS:-} ]]; then
       add_contents_to_config_section_in_file "${NEW_BASH_PATHS[@]}" "$config_name" "$BASH_PATH_PATH"
-      # append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_PATH_PATH}\""
-      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_PATH_PATH}\""
-      # for path in "${NEW_BASH_PATHS[@]}"; do
-      #   append_instructions "add_to_section \"${path}\" \"${config_name}\" \"${BASH_PATH_PATH}\""
-      # done
-      # append_instructions "append_if_absent \"source ${BASH_PATH_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_ALIASES:-} ]]; then
       add_contents_to_config_section_in_file "${NEW_BASH_ALIASES[@]}" "$config_name" "$BASH_ALIASES_PATH"
-      # append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_ALIASES_PATH}\""
-      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_ALIASES_PATH}\""
-      # for alias in "${NEW_BASH_ALIASES[@]}"; do
-      #   append_instructions "add_to_section \"${alias}\" \"${config_name}\" \"${BASH_ALIASES_PATH}\""
-      # done
-      # append_instructions "append_if_absent \"source ${BASH_ALIASES_PATH}\" \"${BASHRC}\""
     fi
     if [[ -n ${NEW_BASH_FUNCTIONS:-} ]]; then
+      # TODO: Check why this multi-line use breaks the below function.
       # add_contents_to_config_section_in_file ${NEW_BASH_FUNCTIONS} "$config_name" "$BASH_FUNCTIONS_PATH"
       append_instructions "append_if_absent \"${START_SECTION_TAG} ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
       append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_FUNCTIONS_PATH}\""
@@ -318,58 +433,78 @@ handle_bash() {
     fi
     if [[ -n ${NEW_BASH_ENV_VARS:-} ]]; then
       add_contents_to_config_section_in_file "${NEW_BASH_ENV_VARS[@]}" "$config_name" "$BASH_ENV_PATH"
-      # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${BASH_ENV_PATH}\""
-      # append_instructions "append_if_absent \"${END_SECTION_TAG} ${config_name}\" \"${BASH_ENV_PATH}\""
-      # for var in "${NEW_BASH_ENV_VARS[@]}"; do
-      #   append_instructions "add_to_section \"${var}\" \"${config_name}\" \"${BASH_ENV_PATH}\""
-      # done
-      # append_instructions "append_if_absent \"source ${BASH_ENV_PATH}\" \"${BASHRC}\""
     fi
   fi
 }
 
+#######################################
+# Handle additions to vim related files.
+# Globals:
+#   NEW_VIM_LINES
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_vim() {
   if [[ -n ${NEW_VIM_LINES:-} ]]; then
     dlog "VIM is effected"
     check_required_files "${VIMRC}"
     add_contents_to_config_section_in_file "${NEW_VIM_LINES[@]}" "$config_name" "$VIM_PATH"
-    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${VIM_PATH}\""
-    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${VIM_PATH}\""
-    # for line in "${NEW_VIM_LINES[@]}"; do
-    #   append_instructions "add_to_section \"${line}\" \"${config_name}\" \"${VIM_PATH}\""
-    # done
-    # append_instructions "append_if_absent \"source ${VIM_PATH}\" \"${VIMRC}\""
   fi
 }
 
+#######################################
+# Handle additions to tmux related files.
+# Globals:
+#   NEW_TMUX_LINES
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_tmux() {
   if [[ -n ${NEW_TMUX_LINES:-} ]]; then
     dlog "TMUX is effected"
     check_required_files "${TMUXCONF}"
     add_contents_to_config_section_in_file "${NEW_TMUX_LINES[@]}" "$config_name" "$TMUX_PATH"
-    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${TMUX_PATH}\""
-    # append_instructions "append_if_absent \" ${END_SECTION_TAG} ${config_name}\" \"${TMUX_PATH}\""
-    # for line in "${NEW_TMUX_LINES[@]}"; do
-    #   append_instructions "add_to_section \"${func}\" \"${config_name}\" \"${TMUX_PATH}\""
-    # done
-    # append_instructions "append_if_absent \"source ${TMUX_PATH}\" \"${TMUXCONF}\""
   fi
 }
 
+#######################################
+# Handle additions to ssh related files.
+# Globals:
+#   NEW_SSH_LINES
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_ssh() {
   if [[ -n ${NEW_SSH_LINES:-} ]]; then
     dlog "SSH is effected"
     check_required_files "${SSHCONF}"
     add_contents_to_config_section_in_file "${NEW_SSH_LINES[@]}" "$config_name" "$SSH_CONF"
-    # append_instructions "append_if_absent \" ${START_SECTION_TAG} ${config_name}\" \"${SSH_PATH}\""
-    # append_instructions "append_if_absent \" ${END_SECTION_TAG} ${config_name}\" \"${SSH_PATH}\""
-    # for line in "${NEW_SSH_LINES[@]}"; do
-    #   append_instructions "add_to_section \"${line}\" \"${config_name}\" \"${SSH_PATH}\""
-    # done
-    # append_instructions "append_if_absent \"source ${SSH_PATH}\" \"${SSHCONF}\""
   fi
 }
 
+#######################################
+# Handle additions to repos.
+# Globals:
+#   NEW_GIT_REPOS
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_repos() {
   if [[ -n ${NEW_GIT_REPOS:-} ]]; then
     dlog "REPOS is effected"
@@ -380,26 +515,52 @@ handle_repos() {
         local repo_name="${BASH_REMATCH[1]}"
         append_instructions "git clone \"${repo}\" \"${REPOS_DIR}${repo_name}\""
       else
+        err "there was an issue setting the destination dir for $repo"
         return 1 # append_instructions "# TODO: set location: git clone \"${repo}\" \"${REPOS_DIR}/${BASH_REMATCH[1]}\""
       fi
     done
   fi
 }
 
+#######################################
+# Handle required global elements.
+# Globals:
+#   REQUIRED_PKGS
+#   REQUIRED_DIRS
+#   REQUIRED_FILES
+# Arguments:
+#   None
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 handle_reqs() {
   if [[ -n ${REQUIRED_PKGS:-} ]]; then
     check_required_packages "${REQUIRED_PKGS[@]}"
   fi
-
   if [[ -n ${REQUIRED_DIRS:-} ]]; then
     check_required_dirs "${REQUIRED_DIRS[@]}"
   fi
-
   if [[ -n ${REQUIRED_FILES:-} ]]; then
     check_required_files "${REQUIRED_FILES[@]}"
   fi
 }
 
+#######################################
+# Generate instructions for a given config name/path.
+# Globals:
+#   SCRIPT_DIR
+#   INSTRUCTIONS_FILE
+#   MAIN_REQUIRED_CONF_VARS
+#   Others are optional
+# Arguments:
+#   config name to use
+# Returns:
+#   Exits 1 if config cannot be found
+# Outputs:
+#   Mutates the INSTRUCTIONS_FILE for the given config
+#######################################
 generate_for_config() {
   local config="$1"
   local config_name="$(basename $config .conf)"
@@ -452,6 +613,17 @@ generate_for_config() {
   append_instructions "${END_SECTION_TAG} $config_name"
 }
 
+#######################################
+# Generate a list of configs.
+# Globals:
+#   SEEN_DEPS
+# Arguments:
+#   list of deps
+# Returns:
+#   Exit 1 if a dependency fails
+# Outputs:
+#   None
+#######################################
 generate_dependencies() {
   for dep in "$@"; do
     # Avoid circular dependency.
@@ -469,6 +641,17 @@ generate_dependencies() {
   done
 }
 
+#######################################
+# Checks that required files exist.
+# Globals:
+#   None
+# Arguments:
+#   list of files
+# Returns:
+#   Exit 1 if any file is missing
+# Outputs:
+#   None
+#######################################
 check_required_files() {
   for f in "$@"; do
     if [[ ! -f "${f}" ]]; then
@@ -478,12 +661,35 @@ check_required_files() {
   done
 }
 
+#######################################
+# Checks that required dirs exist.
+# Globals:
+#   None
+# Arguments:
+#   list of dirs
+# Returns:
+#   Exit 1 if any dir is missing
+# Outputs:
+#   None
+#######################################
 check_required_dirs() {
   for d in "$@"; do
     err "Missing dir: ${d}"
+    exit 1
   done
 }
 
+#######################################
+# Creates a list of all required vars in SEEN_VARS
+# Globals:
+#   SEEN_VARS
+# Arguments:
+#   config to start from
+# Returns:
+#   Exit 1 if any config isn't found
+# Outputs:
+#   None
+#######################################
 get_vars_rec() {
   local config="$1"
   local config_name="$(basename $config .conf)"
@@ -510,6 +716,17 @@ get_vars_rec() {
   fi
 }
 
+#######################################
+# Gets user values for any missing required vars.
+# Globals:
+#   None
+# Arguments:
+#   config to check
+# Returns:
+#   Exit 1 if any config is missing
+# Outputs:
+#   Creates a sourced config file of user values.
+#######################################
 get_all_required_vars() {
   if [[ $# -ne 1 ]]; then
     echo "Provide a config file"
@@ -532,6 +749,17 @@ get_all_required_vars() {
   done
 }
 
+#######################################
+# Appends an instruction to the instruction file.
+# Globals:
+#   None
+# Arguments:
+#   line to append
+# Returns:
+#   None
+# Outputs:
+#   Appends to instruction file
+#######################################
 append_instructions() {
   local line="$1"
   if [[ -f "${INSTRUCTIONS_FILE}" ]]; then
@@ -544,6 +772,17 @@ append_instructions() {
   fi
 }
 
+#######################################
+# Executes the instructions in a relevant instruction file
+# Globals:
+#   None
+# Arguments:
+#   instruction_file to execute
+# Returns:
+#   Exit 1 if instruction file is not found
+# Outputs:
+#   Varies depending on the instruction file
+#######################################
 Run_Instructions() {
   if [[ $# -ne 1 ]]; then
     echo "Provide an instruction file"
@@ -572,6 +811,17 @@ Run_Instructions() {
   source $INSTRUCTIONS_FILE
 }
 
+#######################################
+# Generates an instruction file for a given config
+# Globals:
+#   None
+# Arguments:
+#   config to use
+# Returns:
+#   None
+# Outputs:
+#   A new instruction file is generated
+#######################################
 Generate_Instructions() {
   if [[ $# -ne 1 ]]; then
     echo "Provide a config file"
@@ -586,6 +836,7 @@ Generate_Instructions() {
   local INSTRUCTIONS_FILE="${SCRIPT_DIR}/${MAIN_CONF}-instructions.sh"
   readonly INSTRUCTIONS_FILE
   OUT_DIR_PATH="${SCRIPT_DIR}/out/${MAIN_CONF}"
+  # Clear out any old instruction file. Perhaps should be more explicit.
   echo "#!/bin/bash" >"${INSTRUCTIONS_FILE}"
   append_instructions "OUT_DIR=\"${OUT_DIR}\""
   append_instructions "prepare_backup_dir \$OUT_DIR"
@@ -599,6 +850,17 @@ Generate_Instructions() {
   echo "Done building: $1"
 }
 
+#######################################
+# Verifies that the script config has all fields
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   Exit 1 if any field is missing
+# Outputs:
+#   None
+#######################################
 verify_main_conf() {
   # . "$SCRIPT_DIR"/build-my-box.conf
   if [[ -z ${INSTALL_CMD} ]]; then
@@ -619,6 +881,19 @@ verify_main_conf() {
   fi
 }
 
+#######################################
+# Main method. Handles flags and executes the matching sub-command
+# Globals:
+#   None
+# Arguments:
+#   flags
+#   subcommand
+#   subcommand args
+# Returns:
+#   None
+# Outputs:
+#   None
+#######################################
 main() {
   local SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
   readonly SCRIPT_DIR
